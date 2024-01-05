@@ -1,0 +1,207 @@
+Bootstrap: docker
+From: ubuntu:22.04
+
+%setup
+    #######################################
+    # Precreate data dir and symlink so data can leave the scif
+    #######################################
+    if [ ! -d $HOME/data/snews_cs ]; then
+        mkdir -pv $HOME/data/snews_cs
+    fi
+    ln -sv $HOME/data/snews_cs $SINGULARITY_ROOTFS/scif/data/snews_cs
+
+%files
+    # unused.
+
+%environment
+    #######################################
+    # General env vars
+    #######################################
+    export LC_ALL=C
+
+    # These items can be passed in through the environment
+    # so that things like passwords are not laying in plain text.
+    # They are also VERY environment specific and will differ
+    # depending on where this container is launched from.
+    # ex:
+    # apptainer run \
+    #       --env smtp_server_addr=relay.physics.purdue.edu \
+    #       --env snews_sender_email=snews@purdue.edu \
+    #       --env snews_sender_pass=$(pass snews@purdue.edu) \
+    #       --app coinc snews_cs.img firedrill
+
+    #######################################
+    # paths to things.
+    #######################################
+    export SNEWSBASE=/scif/apps/snews_cs
+    export SNEWSDATA=/scif/data/snews_cs
+    export SNEWSREPO="https://github.com/SNEWS2/SNEWS_Coincidence_System.git"
+    #export SNEWSREPO="https://github.com/whiskey9cjo/SNEWS_Coincidence_System.git"
+    export SNEWSVENV="snewscoinc-venv"
+    export SNEWSLOG=$SNEWSDATA/logs
+
+%post
+    #######################################
+    # variables in environment are NOT available at build time
+    # Define them here as well, I guess.
+    #######################################
+    export SNEWSBASE=/scif/apps/snews_cs
+    export SNEWSDATA=/scif/data/snews_cs
+    export SNEWSREPO="https://github.com/SNEWS2/SNEWS_Coincidence_System.git"
+    #export SNEWSREPO="https://github.com/whiskey9cjo/SNEWS_Coincidence_System.git"
+    export SNEWSPTREPO="https://github.com/SNEWS2/SNEWS_Publishing_Tools.git"
+    export SNEWSVENV="snewscoinc-venv"
+    export SNEWSLOG=$SNEWSDATA/logs
+    export TZ=":/etc/localtime"
+    mkdir -pv $SNEWSBASE
+    #mkdir -pv $SNEWSDATA
+    apt-get update && apt-get install -y strace ca-certificates gpg colorized-logs iproute2 dialog
+    apt-get update && apt-get install -y vim git python3-venv python3-certifi
+    export DEBIAN_FRONTEND=noninteractive
+    cd $SNEWSBASE
+    git clone $SNEWSREPO
+    git clone $SNEWSPTREPO
+    python3 -m venv $SNEWSVENV
+    . $SNEWSVENV/bin/activate
+    cd SNEWS_Coincidence_System
+
+    #######################################
+    # Handle log data persistence.
+    #######################################
+    rm -rfv logs
+    ln -sfv $SNEWSLOG logs
+
+    #######################################
+    # Handle beats data persistence.
+    #######################################
+    # TODO: Figure out how to put the python version into a variable.
+    ln -sfv $SNEWSDATA/snewsbeats beats
+    ln -sfv $SNEWSDATA/snewsbeats $SNEWSBASE/$SNEWSVENV/lib/python3.10/site-packages/beats
+
+
+    #######################################
+    #### Python venv prep ####
+    #######################################
+
+    #######################################
+    # basics
+    #######################################
+    pip3 install setuptools wheel
+
+    #######################################
+    # install_requires
+    #######################################
+    pip3 install hop-client jsonschema numpy pymongo python-dotenv pandas slack-sdk tabulate click scipy matplotlib
+
+    #######################################
+    # extras_require
+    #######################################
+    pip3 install autopep8 flake8 mongomock pytest pytest-console-scripts pytest-cov pytest-mongodb pytest-runner twine
+
+    #######################################
+    # docs
+    #######################################
+    pip3 install sphinx sphinx_rtd_theme sphinxcontrib-programoutput
+
+    pip3 install ./
+
+    # Install SNEWS_PT from git.
+    cd ../SNEWS_Publishing_Tools
+    pip3 install ./
+
+    export SITEPKG=$(pip3 show snews_pt |grep Location |awk '{print $2}')
+    ln -sv $SNEWSLOG $SITEPKG/logs
+
+%runscript
+    echo "must run:
+           apptainer run --app coinc snews_cs.img
+           apptainer run --app run_feedback snews_cs.img
+          "
+
+%apprun coinc
+
+    #######################################
+    # Grab args
+    #######################################
+    for arg in "${@}"; do
+        case $arg in
+           firedrill) firedrill="--firedrill";;
+        esac
+    done
+
+    #randoport () {
+    #    #######################################
+    #    # Grab a random port number
+    #    #######################################
+    #
+    #    # IANA assigned ephemeral ports
+    #    local lowerport=49152
+    #    local upperport=65535
+    #    local port=50009
+    #
+    #    while :
+    #    do
+    #        port=$(shuf -i $lowerport-$upperport -n 1)
+    #        ss -lpna | grep -q ":$port " || break
+    #    done
+    #    echo $port
+    #}
+
+    #######################################
+    # Questioning whether or not this is too much checking.
+    #######################################
+    if [ ! -L $SNEWSDATA ]; then
+        echo "Uhh, $SNEWSDATA does not exist.  Something is terribly broke with this container."
+        exit 1
+    fi
+    if [ ! -d $SNEWSLOG ]; then
+        mkdir -pv $SNEWSLOG
+    fi
+    if [ ! -d $SNEWSDATA/db ]; then
+        mkdir -pv $SNEWSDATA/db
+    fi
+    if [ ! -d $SNEWSDATA/snewsbeats ]; then
+        mkdir -pv $SNEWSDATA/snewsbeats
+    fi
+    if [ -f ~/.config/hop/auth.toml ]; then
+        echo "Your hop auth exists. That is good."
+    else
+        echo "No hop auth file at ~/.config/hop/auth.toml.  Check into this."
+    fi
+
+    . $SNEWSBASE/$SNEWSVENV/bin/activate
+    #python3 $SNEWSBASE/SNEWS_Coincidence_System/server_run.py
+    cd $SNEWSDATA/db
+    echo "... Executing: snews_cs run-coincidence $firedrill ..."
+    snews_cs run-coincidence $firedrill
+
+%apprun run_feedback
+    . $SNEWSBASE/$SNEWSVENV/bin/activate
+    snews_cs run-feedback 
+
+%test
+    #######################################
+    # Do some cheap/easy tests to ensure the container is somewhat set up.
+    #######################################
+    grep -q NAME=\"Ubuntu\" /etc/os-release
+    if [ $? -eq 0 ]; then
+        echo "Container base is Ubuntu as expected."
+    else
+        echo "Container base is not Ubuntu."
+        exit 1
+    fi
+
+%labels
+    Author cjorr@purdue.edu
+    Version v0.0.1
+
+%help
+    This is the SNEWS 2.0 CS container.
+    Build: singularity build --bind $PWD/snewsdata:/project/snews/snewsdata --fakeroot snews_cs.img snews_cs.def
+    Run: singularity run --bind $PWD/snewsdata:/project/snews/snewsdata --writable snews_cs.img
+    Instance: for i in {1..10}; do mkdir snewsdata-instance$i; singularity instance start --bind $PWD/snewsdata-instance$i:/project/snews/snewsdata --writable snews_cs.img booger$i; done
+
+    Apptainer:
+    Build: apptainer build --bind $PWD/snewsdata:/project/snews/data/snewsdata snews_cs.img snews_cs.def
+    Run: apptainer shell --bind $PWD/snewsdata:/project/snews/data/snewsdata --writable-tmpfs snews_cs.img
+    Instance: Untested.
