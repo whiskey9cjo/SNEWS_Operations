@@ -197,11 +197,10 @@ From: ubuntu:22.04
 
 %help
     This is the SNEWS 2.0 CS container.
-    Build: singularity build --bind $PWD/snewsdata:/project/snews/snewsdata --fakeroot snews_cs.img snews_cs.def
-    Run: singularity run --bind $PWD/snewsdata:/project/snews/snewsdata --writable snews_cs.img
-    Instance: for i in {1..10}; do mkdir snewsdata-instance$i; singularity instance start --bind $PWD/snewsdata-instance$i:/project/snews/snewsdata --writable snews_cs.img booger$i; done
 
-    Apptainer:
-    Build: apptainer build --bind $PWD/snewsdata:/project/snews/data/snewsdata snews_cs.img snews_cs.def
-    Run: apptainer shell --bind $PWD/snewsdata:/project/snews/data/snewsdata --writable-tmpfs snews_cs.img
+    Build: apptainer build snews_cs.img snews_cs.def
+    Run:   apptainer run --app coinc snews_cs.img
+    Run:   apptainer run --app run_feedback snews_cs.img
+    Shell: apptainer shell --writable-tmpfs snews_cs.img
+
     Instance: Untested.
