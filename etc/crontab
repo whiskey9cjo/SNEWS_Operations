@@ -1,0 +1,1 @@
+7 1 * * * /usr/sbin/logrotate -l ~/data/logrotate/logrotate.log -s ~/run/logrotate/state ~/etc/logrotate/logrotate.conf
