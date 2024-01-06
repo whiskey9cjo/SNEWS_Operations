@@ -1,0 +1,18 @@
+[Unit]
+Description=SNEWS Coincidence System
+After=autofs.service nss-user-lookup.target multi-user.target
+Wants=remote-fs.target network-online.target systemd-networkd-wait-online.service
+StartLimitIntervalSec=120
+StartLimitBurst=10
+
+[Service]
+WorkingDirectory=/project/snews/snewscoinc/prod/
+Type=simple
+Restart=always
+RestartSec=5s
+User=snews
+PrivateTmp=true
+ExecStart=/project/snews/snewscoinc/prod/runsnews_cs.sh
+
+[Install]
+WantedBy=multi-user.target
