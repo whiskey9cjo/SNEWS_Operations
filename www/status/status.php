@@ -33,7 +33,9 @@ foreach($dirlist as $fn) {
 		$detectors = array_unique(json_decode(json_encode($json_data->{'Detector'}),true));
 
 		foreach ($detectors as &$det) {
-			// Give the javascript function names something unique.
+			// Give the javascript function names something unique so 
+			// I don't unintentionally clobber with two different "chart0-0" 
+			// names for example..
 			$chartid = hash('sha256', rand(1,9999).$det);
 			$htmloutput .= '
 			<script type="text/javascript">
